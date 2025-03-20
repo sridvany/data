@@ -1,0 +1,239 @@
+import yfinance as yf
+import numpy as np
+import pandas as pd
+from scipy import stats
+import matplotlib.pyplot as plt
+import seaborn as sns
+import warnings
+
+warnings.filterwarnings("ignore", category=FutureWarning)
+
+# 1. VERİ ÇEKME
+def get_data(start_date='2015-01-01', end_date='2025-01-01', remove_duplicates=True, remove_zeros=True): # True/False opsiyonu
+    symbols = ["AKBNK.IS","GARAN.IS"]   
+    data = {}
+
+    # Sembolleri çekme
+    df = yf.download(symbols, start=start_date, end=end_date)
+
+    # Veri yapısını kontrol et
+    print(f"Çekilen veri yapısı: {type(df)}")
+    print(f"DataFrame seviyeleri: {df.columns.names}")
+
+    # Her sembol için veriyi ayır
+    for symbol in symbols:
+        try:
+            # Multi-index DataFrame ise
+            if isinstance(df.columns, pd.MultiIndex):
+                data[symbol] = pd.DataFrame()
+                data[symbol]['Open'] = df['Open'][symbol]
+                data[symbol]['High'] = df['High'][symbol]
+                data[symbol]['Low'] = df['Low'][symbol]
+                data[symbol]['Close'] = df['Close'][symbol]
+                data[symbol]['Volume'] = df['Volume'][symbol]
+
+                # Adj Close için güvenli erişim
+                if 'Adj Close' in df.columns.levels[0]:
+                    data[symbol]['Adj Close'] = df['Adj Close'][symbol]
+                else:
+                    data[symbol]['Adj Close'] = df['Close'][symbol]
+            else:
+                # Tek sembol için normal DataFrame ise
+                data[symbol] = df.copy()
+
+            # Tüm veriyi float64'e çevir
+            data[symbol] = data[symbol].astype('float64')
+
+            # Başlangıç veri sayısını kaydet
+            initial_row_count = len(data[symbol])
+            print(f"\n{symbol} için başlangıçtaki satır sayısı: {initial_row_count}")
+
+            # Duplicate kayıtları kaldırma (True/False opsiyonu)
+            if remove_duplicates:
+                before_drop = len(data[symbol])
+                data[symbol] = data[symbol].drop_duplicates()
+                after_drop = len(data[symbol])
+                removed_count = before_drop - after_drop
+                print(f"\n{symbol} için {removed_count} adet tekrarlanan veri kaldırıldı.")
+            else:
+                print(f"\n{symbol} için tekrarlanan veriler kaldırılmadı (remove_duplicates=False).")
+
+            # 0 değerine sahip satırları bulma ve sayma
+            zero_rows = data[symbol].eq(0).any(axis=1)
+            zero_count = zero_rows.sum()
+            print(f"\n{symbol} için 0 değerine sahip satır sayısı: {zero_count}")
+
+            # 0 değerine sahip satırları kaldırma (True/False opsiyonu)
+            if remove_zeros:
+                before_zero_drop = len(data[symbol])
+                data[symbol] = data[symbol][~zero_rows]
+                after_zero_drop = len(data[symbol])
+                print(f"{symbol} için {before_zero_drop - after_zero_drop} adet 0 değerli satır kaldırıldı.")
+            else:
+                print(f"{symbol} için 0 değerli satırlar kaldırılmadı (remove_zeros=False).")
+
+            # Son veri sayısını yazdır
+            final_row_count = len(data[symbol])
+            print(f"{symbol} için son satır sayısı: {final_row_count}")
+
+            # İlk 5 satırı göster
+            print(f"\n{symbol} için ilk 5 satır:")
+            print(data[symbol].head())
+
+        except Exception as e:
+            print(f"Hata ({symbol}): {e}")
+
+    return data, symbols
+
+# 2. EKSİK VERİ ANALİZİ 
+def missing_data_analysis(data, symbols):
+    for symbol in symbols:
+        print(f"\n{symbol} için eksik değerler:")
+        print(data[symbol].isnull().sum())
+
+# 3. VERİ DAĞILIMI
+def plot_distributions(data, symbols):
+    for symbol in symbols:
+        plt.figure(figsize=(15, 10))
+        for i, col in enumerate(data[symbol].columns, 1):
+            plt.subplot(3, 2, i)
+            sns.histplot(data[symbol][col], kde=True)
+            plt.title(f'{symbol} - {col} Distribution')
+        plt.tight_layout()
+        plt.show()
+
+
+# 4. AYKIRI DEĞER ANALİZİ
+def outlier_analysis(data, symbols):
+    for symbol in symbols:
+        df = data[symbol].copy()
+        df['Year'] = df.index.year
+
+        plt.figure(figsize=(15, 6))
+        sns.boxplot(data=df.drop('Year', axis=1))
+        plt.title(f'{symbol} Outliers Box Plot')
+        plt.xticks(rotation=45)
+        plt.show()
+
+        outliers_df = pd.DataFrame(index=sorted(df['Year'].unique()),
+                                   columns=['Open', 'High', 'Low', 'Close', 'Volume', 'Adj Close'])
+
+        for year in df['Year'].unique():
+            year_data = df[df['Year'] == year]
+            for col in df.columns[:-1]:
+                Q1 = year_data[col].quantile(0.25)
+                Q3 = year_data[col].quantile(0.75)
+                IQR = Q3 - Q1
+                outliers = len(year_data[(year_data[col] < Q1 - 1.5 * IQR) |
+                                         (year_data[col] > Q3 + 1.5 * IQR)])
+                outliers_df.loc[year, col] = outliers
+
+        print(f"\n{symbol} Yıllık Aykırı Değer Sayıları:")
+        print(outliers_df)
+
+
+# 5. KORELASYON ANALİZİ
+def correlation_analysis(data, symbols):
+    for symbol in symbols:
+        plt.figure(figsize=(10, 8))
+        sns.heatmap(data[symbol].corr(), annot=True, cmap='coolwarm')
+        plt.title(f'{symbol} Correlation Matrix')
+        plt.show()
+
+
+# 6. ÖRÜNTÜ/PATTERN ANALİZİ
+def pattern_analysis(data, symbols):
+    for symbol in symbols:
+        plt.figure(figsize=(15, 5))
+        plt.subplot(1, 2, 1)
+        plt.plot(data[symbol].index, data[symbol]['Close'])
+        plt.title(f'{symbol} Closing Price Pattern')
+        plt.xlabel('Date')
+        plt.ylabel('Price')
+
+        plt.subplot(1, 2, 2)
+        data[symbol]['Month'] = data[symbol].index.month
+        monthly_avg = data[symbol].groupby('Month')['Close'].mean()
+        monthly_avg.plot(kind='line', marker='o')
+        plt.title(f'{symbol} Seasonal Pattern')
+        plt.xlabel('Month')
+        plt.ylabel('Average Price')
+        plt.grid(True)
+        plt.show()
+
+
+# 7. VERİ TİPLERİ ANALİZİ
+def data_types_analysis(data, symbols):
+    for symbol in symbols:
+        print(f"\n{symbol} veri tipleri:")
+        dtype_info = pd.DataFrame({
+            'Data Type': data[symbol].dtypes,
+            'Non-Null Count': data[symbol].count(),
+            'Memory Usage': data[symbol].memory_usage(deep=True) / 1024
+        })
+        print(dtype_info)
+
+
+# 8. VERİ KALİTESİ KONTROLÜ
+def data_quality_check(data, symbols):
+    for symbol in symbols:
+        quality_report = {
+            'Toplam Satır': len(data[symbol]),
+            'Toplam Sütun': len(data[symbol].columns),
+            'Eksik Değerler': data[symbol].isnull().sum().sum(),
+            'Tekrar Eden Satırlar': data[symbol].duplicated().sum(),
+            'Bellek Kullanımı (MB)': data[symbol].memory_usage().sum() / 1024 ** 2,
+            'Veri Aralığı': f"{data[symbol].index.min()} - {data[symbol].index.max()}"
+        }
+        print(f"\n{symbol} Veri Kalite Raporu:")
+        print(pd.Series(quality_report))
+
+
+# 9. DOĞRUSALLIK TESTİ
+def linearity_test(data, symbols):
+    for symbol in symbols:
+        print(f"\n{symbol} için Doğrusallık Testi Sonuçları:")
+
+        # Her bir değişken için Shapiro-Wilk testi
+        for column in ['Open', 'High', 'Low', 'Close', 'Volume']:
+            # Shapiro-Wilk testi
+            statistic, p_value = stats.shapiro(data[symbol][column])
+
+            print(f"\n{column} değişkeni:")
+            print(f"Shapiro-Wilk test istatistiği: {statistic:.4f}")
+            print(f"p-değeri: {p_value:.4f}")
+
+            # Sonuç yorumu
+            alpha = 0.05
+            if p_value < alpha:
+                print("Sonuç: Veri doğrusal dağılıma sahip değil (p < 0.05)")
+            else:
+                print("Sonuç: Veri doğrusal dağılıma sahip (p > 0.05)")
+
+
+if __name__ == "__main__":
+    data, symbols = get_data()
+
+    print("1. VERİ DAĞILIMI")
+    plot_distributions(data, symbols)
+
+    print("\n2. EKSİK VERİ ANALİZİ")
+    missing_data_analysis(data, symbols)
+
+    print("\n3. AYKIRI DEĞER ANALİZİ")
+    outlier_analysis(data, symbols)
+
+    print("\n4. KORELASYON ANALİZİ")
+    correlation_analysis(data, symbols)
+
+    print("\n5. ÖRÜNTÜ ANALİZİ")
+    pattern_analysis(data, symbols)
+
+    print("\n6. VERİ TİPLERİ ANALİZİ")
+    data_types_analysis(data, symbols)
+
+    print("\n7. VERİ KALİTESİ KONTROLÜ")
+    data_quality_check(data, symbols)
+
+    print("\n8. DOĞRUSALLIK TESTİ")
+    linearity_test(data, symbols)
