@@ -1,0 +1,77 @@
+import yfinance as yf
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from statsmodels.tsa.seasonal import seasonal_decompose
+import matplotlib.dates as mdates
+
+# Semboller ve tarih aralığı
+symbols = ['AKBNK.IS', 'GARAN.IS', 'ISCTR.IS', 'YKBNK.IS']
+start_date = '2007-01-01'
+end_date = '2022-01-01'
+
+for symbol in symbols:
+    # Verileri çek
+    data = yf.download(symbol, start=start_date, end=end_date)
+
+    # Eksik değerlerle ilgili bilgi al
+    print(f"{symbol} veri şekli: {data.shape}")
+    print(f"{symbol} NaN değer sayısı: {data['Close'].isna().sum()}")
+
+    # Kapanış fiyatlarını al ve eksik değerleri doldur
+    close_data = data['Close'].copy()
+    close_data = close_data.ffill()
+
+    # Veri boyutunu kontrol et
+    print(f"{symbol} işlenen veri boyutu: {close_data.shape}")
+
+    # Mevsimsel ayrıştırma için periyot
+    period = 52  # haftalık periyot
+
+    # Haftalık veriye dönüştür
+    weekly_data = close_data.resample('W').mean()
+    print(f"{symbol} haftalık veri boyutu: {weekly_data.shape}")
+
+    if weekly_data.shape[0] >= 2 * period:
+        decomposition = seasonal_decompose(weekly_data, model='additive', period=period)
+
+        fig = plt.figure(figsize=(12, 10))
+        plt.suptitle(f'Seasonal Decomposition - {symbol}', fontsize=14, color='red')
+
+        # Gözlemlenen veri
+        ax1 = plt.subplot(411)
+        plt.plot(decomposition.observed)
+        plt.ylabel('Data')
+        ax1.set_title('Observed', pad=10, color='red')
+
+        # Mevsimsel bileşen
+        ax2 = plt.subplot(412)
+        plt.plot(decomposition.seasonal)
+        plt.ylabel('Seasonal')
+        ax2.set_title('Seasonal Component', pad=10, color='red')
+
+        # Trend bileşeni
+        ax3 = plt.subplot(413)
+        plt.plot(decomposition.trend)
+        plt.ylabel('Trend')
+        ax3.set_title('Trend Component', pad=10, color='red')
+
+        # Artık bileşen
+        ax4 = plt.subplot(414)
+        plt.plot(decomposition.resid)
+        plt.ylabel('Remainder')
+        plt.xlabel('Time')
+        ax4.set_title('Remainder Component', pad=10, color='red')
+
+        # X ekseni format ayarları
+        years = mdates.YearLocator(5)
+        plt.gca().xaxis.set_major_locator(years)
+        plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
+
+        plt.tight_layout()
+        plt.subplots_adjust(top=0.92)  # Başlık için boşluk ayarı
+
+        # Görseli kaydetmek yerine gösterme
+        plt.show()
+    else:
+        print(f"{symbol} yeterli veri yok: {weekly_data.shape[0]} gözlem var, en az {2 * period} gözlem gerekiyor")
