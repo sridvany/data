@@ -9,8 +9,8 @@ import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
 
 # 1. VERİ ÇEKME
-def get_data(start_date='2015-01-01', end_date='2025-01-01', remove_duplicates=True, remove_zeros=True): # True/False opsiyonu
-    symbols = ["AKBNK.IS","GARAN.IS"]   
+def get_data(start_date='2010-01-01', end_date='2025-01-01', remove_duplicates=True, remove_zeros=True): # True/False opsiyonu
+    symbols = ["AKBNK.IS","GARAN.IS"]
     data = {}
 
     # Sembolleri çekme
@@ -63,7 +63,7 @@ def get_data(start_date='2015-01-01', end_date='2025-01-01', remove_duplicates=T
             zero_count = zero_rows.sum()
             print(f"\n{symbol} için 0 değerine sahip satır sayısı: {zero_count}")
 
-            # 0 değerine sahip satırları kaldırma (True/False opsiyonu)
+            # 0 değerine sahip satırları kaldırma (True/False opsiyonlu)
             if remove_zeros:
                 before_zero_drop = len(data[symbol])
                 data[symbol] = data[symbol][~zero_rows]
@@ -85,7 +85,7 @@ def get_data(start_date='2015-01-01', end_date='2025-01-01', remove_duplicates=T
 
     return data, symbols
 
-# 2. EKSİK VERİ ANALİZİ 
+# 2. EKSİK VERİ ANALİZİ
 def missing_data_analysis(data, symbols):
     for symbol in symbols:
         print(f"\n{symbol} için eksik değerler:")
@@ -237,3 +237,47 @@ if __name__ == "__main__":
 
     print("\n8. DOĞRUSALLIK TESTİ")
     linearity_test(data, symbols)
+
+# ÖZET BLOĞU
+print("\n--- ÖZET ---")
+
+for symbol in symbols:
+    print(f"\n*** {symbol} için Özet ***")
+
+    # Ham veriyi yeniden çekiyoruz (başlangıç parametreleriyle)
+    raw_df = yf.download(symbol, start='2010-01-01', end='2025-01-01')
+    initial_count = len(raw_df)
+
+    # Duplicate kayıtları kaldırma işlemi
+    df_no_duplicates = raw_df.drop_duplicates()
+    count_after_duplicates = len(df_no_duplicates)
+    duplicates_removed = initial_count - count_after_duplicates
+
+    # 0 değerine sahip satırları tespit edip kaldırıyoruz
+    zero_mask = df_no_duplicates.eq(0).any(axis=1)
+    zero_rows_count = zero_mask.sum()
+    final_expected_count = count_after_duplicates - zero_rows_count
+
+    # Özet gösteriminde ek sütun (ör. Month) eklemiyoruz
+    summary_df = data[symbol].copy()
+    if 'Month' in summary_df.columns:
+        summary_df = summary_df.drop(columns=['Month'])
+
+    # 1. İlk 5 satır
+    print("\nİlk 5 satır:")
+    print(summary_df.head())
+
+    # 2. Satır sayıları
+    print(f"\nBaşlangıçta: {initial_count} satır vardı.")
+    print(f"Duplicate temizlemeden sonra: {count_after_duplicates} satır kaldı.")
+    print(f"Temizleme sonrası (duplicate ve 0 değerli satırlar çıkarıldığında beklenen): {final_expected_count} satır.")
+
+    # 3. Kaldırılan verilerin sayıları ve nedenleri
+    if duplicates_removed > 0:
+        print(f"Çıkarılan duplicate kayıt sayısı: {duplicates_removed} (Duplicate kayıtlar kaldırıldı.)")
+    if zero_rows_count > 0:
+        print(f"Çıkarılan 0 değerli satır sayısı: {zero_rows_count} (0 değerli satırlar kaldırıldı.)")
+
+    # 4. Veri tipleri
+    print("\nVeri Tipleri:")
+    print(summary_df.dtypes)
