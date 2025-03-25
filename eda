@@ -10,7 +10,7 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 
 # 1. VERİ ÇEKME
 def get_data(start_date='2010-01-01', end_date='2025-01-01', remove_duplicates=True, remove_zeros=True): # True/False opsiyonu
-    symbols = ["AKBNK.IS","GARAN.IS"]
+    symbols = ["AKBNK.IS","GARAN.IS", "ISCTR.IS", "YKBNK.IS"]
     data = {}
 
     # Sembolleri çekme
